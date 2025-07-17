@@ -3,65 +3,66 @@
   <meta charset="utf-8" />
   <meta content="width=device-width, initial-scale=1" name="viewport" />
   <title>Capture UI with Fullscreen 3D Model</title>
-  <script type="module">
-    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.121.1/build/three.module.js";
-    import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.121.1/examples/jsm/loaders/GLTFLoader.js";
+<script type="module">
+  import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.121.1/build/three.module.js";
+  import { OBJLoader } from "https://cdn.jsdelivr.net/npm/three@0.121.1/examples/jsm/loaders/OBJLoader.js";
+  import { MTLLoader } from "https://cdn.jsdelivr.net/npm/three@0.121.1/examples/jsm/loaders/MTLLoader.js";
 
-    window.addEventListener("DOMContentLoaded", () => {
-      const container = document.getElementById("model-container");
+  window.addEventListener("DOMContentLoaded", () => {
+    const container = document.getElementById("model-container");
 
-      const camera = new THREE.PerspectiveCamera(
-        10,
-        window.innerWidth / window.innerHeight,
-        0.3,
-        1000
-      );
-      camera.position.z = 10;
+    // Настройка сцены, камеры и рендерера
+    const camera = new THREE.PerspectiveCamera(10, window.innerWidth / window.innerHeight, 0.3, 1000);
+    camera.position.z = 10;
 
-      const scene = new THREE.Scene();
+    const scene = new THREE.Scene();
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x1a152a, 0);
+    container.appendChild(renderer.domElement);
 
-      let animegirls;
-      const loader = new GLTFLoader();
-      loader.load(
-        "models/anime.glb",
-        function (gltf) {
-          animegirls = gltf.scene;
-          // Scale down width by scaling X axis smaller than Y and Z
-          animegirls.scale.set(1, 1.1, 1.5); // narrower width, normal height and depth
-          animegirls.position.set(0, -1.5, 4);  // moved down
-          scene.add(animegirls);
-          renderer.render(scene, camera); // Render once after model loads
-        },
-        function (xhr) {
-          // progress callback (optional)
-        },
-        function (error) {
-          console.error("An error happened loading the model:", error);
-        }
-      );
+    // 1. Загружаем материалы (MTL)
+    const mtlLoader = new MTLLoader();
+    mtlLoader.load(
+      "models/anime.mtl", // Путь к MTL-файлу
+      (materials) => {
+        materials.preload(); // Предзагрузка материалов
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        // 2. Загружаем OBJ с привязанными материалами
+        const objLoader = new OBJLoader();
+        objLoader.setMaterials(materials); // Привязываем материалы
+        objLoader.load(
+          "models/anime.obj", // Путь к OBJ-файлу
+          (object) => {
+            object.scale.set(1, 1.1, 1.5);
+            object.position.set(0, -1.5, 4);
+            scene.add(object);
+            renderer.render(scene, camera);
+          },
+          (xhr) => console.log((xhr.loaded / xhr.total * 100) + '% загружено'),
+          (error) => console.error("Ошибка загрузки OBJ:", error)
+        );
+      },
+      (xhr) => console.log((xhr.loaded / xhr.total * 100) + '% MTL загружено'),
+      (error) => console.error("Ошибка загрузки MTL:", error)
+    );
+
+    // Освещение (важно для текстур!)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(0, -1.5, 4);
+    scene.add(directionalLight);
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setClearColor(0x1a152a, 0); // transparent background
-      container.appendChild(renderer.domElement);
-
-      // Lighting
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-      scene.add(ambientLight);
-
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      directionalLight.position.set(0, -1.5, 4);
-      scene.add(directionalLight);
-
-      // Resize handler
-      window.addEventListener("resize", () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.render(scene, camera); // Re-render on resize
-      });
+      renderer.render(scene, camera);
     });
-  </script>
+  });
+</script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link
     href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
