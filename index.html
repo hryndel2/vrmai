@@ -9,12 +9,24 @@
   import { MTLLoader } from "https://cdn.jsdelivr.net/npm/three@0.121.1/examples/jsm/loaders/MTLLoader.js";
   import { FBXLoader } from "https://cdn.jsdelivr.net/npm/three@0.121.1/examples/jsm/loaders/FBXLoader.js";
   
+  // Состояния персонажа
+  const CharacterState = {
+    IDLE: 'idle',
+    DANCE: 'dance',
+    TALKING: 'talking'
+  };
+
   window.addEventListener("DOMContentLoaded", () => {
     const container = document.getElementById("model-container");
     let mixer; // Для анимации
+    let currentAction = null; // Текущая анимация
+    let animations = {}; // Все загруженные анимации
+    let currentState = CharacterState.IDLE; // Текущее состояние
     let clock = new THREE.Clock(); // Для расчета deltaTime
+    
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-	renderer.setClearColor(new THREE.Color(231/255, 231/255, 231/255), 1);
+    renderer.setClearColor(new THREE.Color(231/255, 231/255, 231/255), 1);
+    
     // Настройка сцены, камеры и рендерера
     const camera = new THREE.PerspectiveCamera(10, window.innerWidth / window.innerHeight, 0.3, 1000);
     camera.position.z = 10;
@@ -24,45 +36,105 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
 
-    // Загрузка FBX с анимацией
+    // Функция для переключения анимации
+    function setAnimation(state) {
+      if (currentAction && currentAction === animations[state]) return;
+      
+      if (currentAction) {
+        // Плавное затухание текущей анимации
+        currentAction.fadeOut(0.2);
+      }
+      
+      currentAction = animations[state];
+      currentState = state;
+      
+      if (currentAction) {
+        currentAction.reset()
+          .setEffectiveTimeScale(1)
+          .setEffectiveWeight(1)
+          .fadeIn(0.2)
+          .play();
+      }
+    }
+
+    // Загрузчик FBX
     const fbxLoader = new FBXLoader();
-    fbxLoader.load('models/Idle.fbx', (fbx) => {
-	  document.getElementById("loader").style.display = "none"
-	  const model = fbx;
-	  
-	  // Настройка размера модели
-	  model.scale.set(1, 1.1, 1.5);
-	  
-	  // Настройка позиции модели (X, Y, Z)
-	  model.position.set(0, -1.5, 4);
-      scene.add(model);
-
-      // Настройка анимации
-      mixer = new THREE.AnimationMixer(model);
-      if (fbx.animations.length > 0) {
-        const action = mixer.clipAction(fbx.animations[0]);
-        action.play();
-      }
-
-      // Освещение
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-      scene.add(ambientLight);
-
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      directionalLight.position.set(0, -1.5, 4);
-      scene.add(directionalLight);
-
-      // Анимационный цикл
-      function animate() {
-        requestAnimationFrame(animate);
-        const delta = clock.getDelta();
-        if (mixer) mixer.update(delta);
-        renderer.render(scene, camera);
-      }
-      animate();
-    }, undefined, (error) => {
-      console.error("Error loading FBX:", error);
+    
+    // Загрузка всех анимаций
+    Promise.all([
+      loadAnimation('Idle', 'models/Idle.fbx'),
+      loadAnimation('Dance', 'models/Dance.fbx'),
+      loadAnimation('Talking', 'models/Talking.fbx')
+    ]).then(() => {
+      document.getElementById("loader").style.display = "none";
+      setAnimation(currentState);
+      
+      // Настройка UI для управления состояниями
+      setupUI();
+    }).catch(error => {
+      console.error("Error loading animations:", error);
     });
+
+    // Функция для загрузки анимации
+    function loadAnimation(name, url) {
+      return new Promise((resolve, reject) => {
+        fbxLoader.load(url, (fbx) => {
+          const model = fbx;
+          
+          // Настройка размера модели (только для первой загруженной модели)
+          if (!scene.children.some(child => child.type === 'Group')) {
+            model.scale.set(1, 1.1, 1.5);
+            model.position.set(0, -1.5, 4);
+            scene.add(model);
+            
+            // Освещение (добавляем только один раз)
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(0, -1.5, 4);
+            scene.add(directionalLight);
+            
+            // Инициализация миксера анимаций
+            mixer = new THREE.AnimationMixer(model);
+          }
+          
+          // Сохраняем анимации
+          if (fbx.animations.length > 0) {
+            animations[name.toLowerCase()] = mixer.clipAction(fbx.animations[0]);
+          }
+          
+          resolve();
+        }, undefined, reject);
+      });
+    }
+
+    // Настройка UI для управления состояниями
+    function setupUI() {
+      // Кнопка Dance
+      document.getElementById('dance-btn').addEventListener('click', () => {
+        setAnimation(CharacterState.DANCE);
+      });
+      
+      // Кнопка Talking
+      document.getElementById('talk-btn').addEventListener('click', () => {
+        setAnimation(CharacterState.TALKING);
+      });
+      
+      // Кнопка Idle
+      document.getElementById('idle-btn').addEventListener('click', () => {
+        setAnimation(CharacterState.IDLE);
+      });
+    }
+
+    // Анимационный цикл
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      if (mixer) mixer.update(delta);
+      renderer.render(scene, camera);
+    }
+    animate();
 
     window.addEventListener("resize", () => {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -137,6 +209,19 @@ canvas {
       height: 100vh;
       justify-content: space-between;
     }
+    
+    .state-btn {
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    
+    .state-btn:hover {
+      transform: scale(1.1);
+    }
+    
+    .state-btn.active {
+      background-color: rgba(255, 255, 255, 0.5);
+    }
   </style>
 </head>
 <body class="min-h-screen bg-[rgb(231,231,231)]">
@@ -160,22 +245,28 @@ canvas {
     <div class="space-y-4">
       <div class="flex justify-between gap-4">
         <button
-          aria-label="Video"
-          class="btn-blur flex-1 py-3 flex justify-center items-center text-white text-xl"
+          id="dance-btn"
+          aria-label="Dance"
+          class="btn-blur state-btn flex-1 py-3 flex justify-center items-center text-white text-xl"
+          title="Dance"
         >
-          <i class="fas fa-video"></i>
+          <i class="fas fa-music"></i>
         </button>
         <button
-          aria-label="Volume"
-          class="btn-blur flex-1 py-3 flex justify-center items-center text-white text-xl"
+          id="talk-btn"
+          aria-label="Talking"
+          class="btn-blur state-btn flex-1 py-3 flex justify-center items-center text-white text-xl"
+          title="Talking"
         >
-          <i class="fas fa-volume-up"></i>
+          <i class="fas fa-comment-dots"></i>
         </button>
         <button
-          aria-label="Microphone"
-          class="btn-blur flex-1 py-3 flex justify-center items-center text-white text-xl"
+          id="idle-btn"
+          aria-label="Idle"
+          class="btn-blur state-btn flex-1 py-3 flex justify-center items-center text-white text-xl active"
+          title="Idle"
         >
-          <i class="fas fa-microphone"></i>
+          <i class="fas fa-user"></i>
         </button>
       </div>
       <div class="flex justify-between items-center gap-4">
@@ -196,5 +287,15 @@ canvas {
 
   <!-- 3D Model container -->
   <div id="model-container"></div>
+  
+  <script>
+    // Обработка активного состояния кнопок
+    document.querySelectorAll('.state-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.state-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+      });
+    });
+  </script>
 </body>
 </html>
